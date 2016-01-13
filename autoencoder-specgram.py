@@ -15,6 +15,15 @@ import lasagne
 from lasagne.nonlinearities import rectify, leaky_rectify, very_leaky_rectify
 from numpy import float32
 
+try:
+	from lasagne.layers import InverseLayer as _
+	use_maxpool = True
+except ImportError:
+	print("""**********************
+		WARNING: InverseLayer not found in Lasagne. Please use a more recent version of Lasagne.
+		WARNING: We'll deactivate the maxpooling part of the network (since we can't use InverseLayer to undo it)""")
+	use_maxpool = False
+
 import matplotlib
 #matplotlib.use('PDF') # http://www.astrobetter.com/plotting-to-a-file-in-python/
 import matplotlib.pyplot as plt
@@ -65,18 +74,20 @@ normlayer = network # we need to remember this one so we can set its parameters
 #
 network, filters_enc = make_custom_convlayer(network, in_num_chans=specbinnum, out_num_chans=numfilters)
 #
-###########################################
-###########################################
-###########################################
-# NOTE: in this example we have no maxpooling or other downsampling.
-# That's a notable absence compared to standard architectures.
-# For the present code, with 1 encoding layer and 1 decoding layer,
-# you might expect that to happen about here.
-###########################################
-###########################################
-###########################################
+# NOTE: here we're using max-pooling, along the time axis only, and then
+# using Lasagne's "InverseLayer" to undo the maxpooling in one-hot fashion.
+# There's a side-effect of this: if you use *overlapping* maxpooling windows,
+# the InverseLayer may behave slightly unexpectedly, adding some points with
+# double magnitude. It's OK here since we're not overlapping the windows
+if use_maxpool:
+	network = lasagne.layers.MaxPool2DLayer(network, pool_size=(1,2), stride=(1,2))
+	maxpool_layer = network # store a pointer to this one
 
+# NOTE: HERE is the "middle" of the autoencoder!
 latents = network  # we remember the "latents" at the midpoint of the net, since we'll want to inspect them, and maybe regularise them too
+
+if use_maxpool:
+	network = lasagne.layers.InverseLayer(network, maxpool_layer)
 
 network, filters_dec = make_custom_convlayer(network, in_num_chans=numfilters, out_num_chans=specbinnum)
 
